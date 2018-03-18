@@ -1,9 +1,10 @@
 import uuid
+import re
 
 from django.contrib.postgres.fields import JSONField
 from django.db import models
 
-MAX_LENGTH = 255
+MAX_LENGTH = 2047
 
 class Question(models.Model):
     question_text = models.CharField(max_length=200)
@@ -24,6 +25,85 @@ class User(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+#{'maintainers': 'nomaintainer', 'categories': 'aqua devel'}
+
+class PortIndex(models.Model):
+    data = JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def save(self, *args, **kwargs):
+        for port in self.data:
+
+            name = port['name']
+            version = port['version']
+            revision = port['revision']
+            path = port['portdir']
+            homepage = port['homepage']
+            epoch = port['epoch']
+            platforms = port['platforms']
+            licenses = port['license']
+
+            if 'variants' in port.keys():
+                variants = port['variants']
+            else:
+                variants = ""
+
+            description = port['description']
+            long_description = port['long_description']
+
+            categories = port['categories'].split()
+            maintainers = re.findall(r"{.*?}|\w+", port["maintainers"])
+            # print(maintainers)
+
+            # p, created = Port.objects.update_or_create(
+            #     name=name,
+            #     defaults={
+            #     version=version,
+            #     revision=revision,
+            #     path=path,
+            #     homepage=homepage,
+            #     epoch=epoch,
+            #     platforms=platforms,
+            #     licenses=licenses,
+            #     variants=variants,
+            #     description=description,
+            #     long_description=long_description,
+            #     }
+            # )
+            p, created = Port.objects.update_or_create(
+                name=name,
+                defaults={
+                'version':version,
+                'revision':revision,
+                'path':path,
+                'homepage':homepage,
+                'epoch':epoch,
+                'platforms':platforms,
+                'licenses':licenses,
+                'variants':variants,
+                'description':description,
+                'long_description':long_description,
+                }
+            )
+
+            for category in categories:
+                c, created = Category.objects.get_or_create(name=category)
+                p.categories.add(c)
+
+            for maintainer in maintainers:
+                if maintainer == 'nomaintainer':
+                    continue
+                elif maintainer == 'openmaintainer':
+                    p.is_open_maintainer = True
+                else:
+                    m, created = Maintainer.objects.get_or_create(
+                        github_handle=maintainer,)
+                    p.maintainers.add(m)
 
 
 class Submission(models.Model):
@@ -91,12 +171,20 @@ class Port(models.Model):
     epoch = models.IntegerField(default=0)
     description = models.TextField(default="")
     long_description = models.TextField(default="")
+    homepage = models.CharField(
+        default="",
+        max_length=MAX_LENGTH
+    )
 
     licenses = models.CharField(max_length=MAX_LENGTH)
-    variants = models.CharField(max_length=MAX_LENGTH)
+    variants = models.CharField(
+        default="",
+        max_length=MAX_LENGTH
+    )
     platforms = models.CharField(max_length=MAX_LENGTH)
 
     maintainers = models.ManyToManyField(Maintainer)
+    is_open_maintainer = models.BooleanField(default=False)
     categories = models.ManyToManyField(Category)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -121,12 +209,12 @@ class InstalledPort(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def populate(user, data):
+        # TODO:
         # {'name': 'py36-psycopg2', 'version': '2.7.4_0', 'variants': 'postgresql10 +'}
         for each in port:
             name = each['name']
             version = each['version']
             variants = each['variants']
-
 
 
 class OsStatistic(models.Model):

@@ -4,7 +4,7 @@ from django.shortcuts import render
 from django.http import Http404, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Port, Submission
+from .models import Port, Submission, PortIndex
 
 def index(request):
     return render(request, 'firstapp/index.html', {'home': "Hello, world. You're at the firstapp index."})
@@ -33,5 +33,6 @@ def get_portindex(request):
     if request.method == 'POST':
         portindex = request.body.decode("utf-8")
         portindex = json.loads(portindex)
-        print(portindex[0])
+        p = PortIndex(data=portindex)
+        p.save()
     return HttpResponse("Success getting portindex.")
