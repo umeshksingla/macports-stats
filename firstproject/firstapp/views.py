@@ -25,7 +25,7 @@ def get_submissions(request):
         submission = json.loads(submission)
         s = Submission(data=submission)
         s.save()
-    return HttpResponse("Success getting user's submission.")
+    return HttpResponse("Success getting user's submission.\n")
 
 
 @csrf_exempt
@@ -34,5 +34,5 @@ def get_portindex(request):
         portindex = request.body.decode("utf-8")
         portindex = json.loads(portindex)
         p = PortIndex(data=portindex)
-        p.save()
-    return HttpResponse("Success getting portindex.")
+        status = p.save()
+    return HttpResponse("Success getting portindex.\n")

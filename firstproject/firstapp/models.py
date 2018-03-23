@@ -2,9 +2,13 @@ import uuid
 import re
 
 from django.contrib.postgres.fields import JSONField
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
 
-MAX_LENGTH = 2047
+MAX_LENGTH = 255
+ERROR = 1
+SUCCESS = 0
+
 
 class Question(models.Model):
     question_text = models.CharField(max_length=200)
@@ -26,7 +30,6 @@ class User(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-#{'maintainers': 'nomaintainer', 'categories': 'aqua devel'}
 
 class PortIndex(models.Model):
     data = JSONField()
@@ -37,73 +40,60 @@ class PortIndex(models.Model):
         ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
+        print("Updating portindex ...")
         for port in self.data:
 
-            name = port['name']
-            version = port['version']
-            revision = port['revision']
-            path = port['portdir']
-            homepage = port['homepage']
-            epoch = port['epoch']
-            platforms = port['platforms']
-            licenses = port['license']
+            try:
+                name = port['name']
+            except KeyError:
+                name = NULL
 
-            if 'variants' in port.keys():
-                variants = port['variants']
-            else:
-                variants = ""
+            keys = ['version', 'revision', 'portdir', 'homepage', \
+                'epoch', 'platforms', 'license', 'variants', 'description', \
+                'long_description']
 
-            description = port['description']
-            long_description = port['long_description']
+            defaults={}
 
-            categories = port['categories'].split()
-            maintainers = re.findall(r"{.*?}|\w+", port["maintainers"])
-            # print(maintainers)
-
-            # p, created = Port.objects.update_or_create(
-            #     name=name,
-            #     defaults={
-            #     version=version,
-            #     revision=revision,
-            #     path=path,
-            #     homepage=homepage,
-            #     epoch=epoch,
-            #     platforms=platforms,
-            #     licenses=licenses,
-            #     variants=variants,
-            #     description=description,
-            #     long_description=long_description,
-            #     }
-            # )
-            p, created = Port.objects.update_or_create(
-                name=name,
-                defaults={
-                'version':version,
-                'revision':revision,
-                'path':path,
-                'homepage':homepage,
-                'epoch':epoch,
-                'platforms':platforms,
-                'licenses':licenses,
-                'variants':variants,
-                'description':description,
-                'long_description':long_description,
-                }
-            )
-
-            for category in categories:
-                c, created = Category.objects.get_or_create(name=category)
-                p.categories.add(c)
-
-            for maintainer in maintainers:
-                if maintainer == 'nomaintainer':
-                    continue
-                elif maintainer == 'openmaintainer':
-                    p.is_open_maintainer = True
+            for key in keys:
+                if key in port.keys():
+                    defaults[key] = port[key]
                 else:
-                    m, created = Maintainer.objects.get_or_create(
-                        github_handle=maintainer,)
-                    p.maintainers.add(m)
+                    defaults[key] = ""
+            try:
+                categories = port['categories'].split()
+            except KeyError:
+                categories = ""
+            try:
+                maintainers = re.findall(r"{.*?}|\w+", port["maintainers"])
+            except KeyError:
+                maintainers = ""
+
+            try:
+                defaults['exists'] = True
+                p, created = Port.objects.update_or_create(
+                    name=name,
+                    defaults=defaults
+                )
+
+                for category in categories:
+                    c, created = Category.objects.get_or_create(name=category)
+                    p.categories.add(c)
+
+                for maintainer in maintainers:
+                    if maintainer == 'nomaintainer':
+                        continue
+                    elif maintainer == 'openmaintainer':
+                        p.is_open_maintainer = True
+                        p.save()
+                    else:
+                        m, created = Maintainer.objects.get_or_create(
+                            github_handle=maintainer,)
+                        p.maintainers.add(m)
+            except ObjectDoesNotExist:
+                print("Updating portindex unsuccessful.")
+                return ERROR
+        print("Updating portindex successful.")
+        return SUCCESS
 
 
 class Submission(models.Model):
@@ -160,15 +150,20 @@ class Port(models.Model):
     # current portindex
 
     name = models.CharField(
+        null=False,
         unique=True,
         max_length=MAX_LENGTH,
     )
+
     exists = models.BooleanField(default=False)
 
-    path = models.CharField(max_length=MAX_LENGTH)
+    portdir = models.CharField(max_length=MAX_LENGTH)
     version = models.CharField(max_length=MAX_LENGTH)
     revision = models.IntegerField(default=0)
-    epoch = models.IntegerField(default=0)
+    epoch = models.CharField(
+        default="0",
+        max_length=MAX_LENGTH,
+    )
     description = models.TextField(default="")
     long_description = models.TextField(default="")
     homepage = models.CharField(
@@ -176,12 +171,12 @@ class Port(models.Model):
         max_length=MAX_LENGTH
     )
 
-    licenses = models.CharField(max_length=MAX_LENGTH)
+    license = models.CharField(max_length=MAX_LENGTH)
     variants = models.CharField(
         default="",
         max_length=MAX_LENGTH
     )
-    platforms = models.CharField(max_length=MAX_LENGTH)
+    platforms = models.CharField(default="",max_length=MAX_LENGTH)
 
     maintainers = models.ManyToManyField(Maintainer)
     is_open_maintainer = models.BooleanField(default=False)
@@ -200,7 +195,7 @@ class InstalledPort(models.Model):
     )
     installed_version = models.CharField(max_length=MAX_LENGTH)
     installed_variants = models.CharField(max_length=MAX_LENGTH)
-    requested = models.BooleanField(default=0)
+    requested = models.BooleanField(default=False)
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE
@@ -211,10 +206,11 @@ class InstalledPort(models.Model):
     def populate(user, data):
         # TODO:
         # {'name': 'py36-psycopg2', 'version': '2.7.4_0', 'variants': 'postgresql10 +'}
-        for each in port:
-            name = each['name']
-            version = each['version']
-            variants = each['variants']
+        # for each in port:
+        #     name = each['name']
+        #     version = each['version']
+        #     variants = each['variants']
+        pass
 
 
 class OsStatistic(models.Model):
