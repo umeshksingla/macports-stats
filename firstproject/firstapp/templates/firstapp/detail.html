@@ -1,1 +1,18 @@
-{{port}}
+{{port.name}}
+</br></br>
+{{port.description}}
+</br></br>
+{{port.long_description}}
+</br></br>
+Categories:</br>
+{% for i in port.categories.all %}
+	{{i.name}}
+{% endfor %}
+</br></br>
+
+Maintainers:</br>
+{% for i in port.maintainers.all %}
+	{{i.github_handle}}
+{% endfor %}
+
+</br></br>
